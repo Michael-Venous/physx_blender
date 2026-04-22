@@ -24,7 +24,8 @@ target_link_libraries(flow_to_nvdb_minimal PRIVATE
 )
 
 # Embed the library path directly into the executable's RPATH
+# Use $ORIGIN/libs for installed binaries and include the build-time lib path
 set_target_properties(flow_to_nvdb_minimal PROPERTIES
     BUILD_RPATH "${NVFLOW_LIB_DIR}"
-    INSTALL_RPATH "${NVFLOW_LIB_DIR}"
+    INSTALL_RPATH "\$ORIGIN/libs;${NVFLOW_LIB_DIR}"
 )

@@ -19,7 +19,6 @@ class PhysXSmokeProperties(bpy.types.PropertyGroup):
         description="Type of smoke emitter",
         items=[
             ("sphere", "Sphere", "Spherical emitter"),
-            ("box", "Box", "Box-shaped emitter"),
             ("mesh", "Mesh", "Mesh-based emitter"),
             ("particles", "Particles", "Particle system emitter"),
         ],
@@ -62,7 +61,6 @@ class PhysXSmokeProperties(bpy.types.PropertyGroup):
         name="Emitter Velocity Y",
         description="Initial velocity in Y direction",
         default=0.0,
-        subtype="VELOCITY",
     )
     
     # Smoke Parameters
@@ -127,10 +125,10 @@ class PhysXSmokeProperties(bpy.types.PropertyGroup):
         type=bpy.types.Object,
     )
     
-    particle_system: PointerProperty(
+    particle_system_name: StringProperty(
         name="Particle System",
-        description="Particle system to use as emitter (for particles emitter type)",
-        type=bpy.types.ParticleSystem,
+        description="Name of the particle system to use as emitter (for particles emitter type)",
+        default="",
     )
     
     # Advanced Settings
@@ -188,13 +186,23 @@ class PhysXSmokeProperties(bpy.types.PropertyGroup):
 
 
 def register():
+    # Unregister first if already registered (handles re-enable after disable)
+    try:
+        bpy.utils.unregister_class(PhysXSmokeProperties)
+    except RuntimeError:
+        pass  # Not registered, that's fine
     bpy.utils.register_class(PhysXSmokeProperties)
     bpy.types.Scene.physx_smoke = PointerProperty(type=PhysXSmokeProperties)
 
 
 def unregister():
-    del bpy.types.Scene.physx_smoke
-    bpy.utils.unregister_class(PhysXSmokeProperties)
+    # Remove scene property if it exists
+    if hasattr(bpy.types.Scene, 'physx_smoke'):
+        del bpy.types.Scene.physx_smoke
+    try:
+        bpy.utils.unregister_class(PhysXSmokeProperties)
+    except RuntimeError:
+        pass  # Already unregistered
 
 
 if __name__ == "__main__":

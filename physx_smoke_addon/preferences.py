@@ -36,11 +36,18 @@ class PhysXSmokePreferences(AddonPreferences):
 
 
 def register():
+    try:
+        bpy.utils.unregister_class(PhysXSmokePreferences)
+    except RuntimeError:
+        pass
     bpy.utils.register_class(PhysXSmokePreferences)
 
 
 def unregister():
-    bpy.utils.unregister_class(PhysXSmokePreferences)
+    try:
+        bpy.utils.unregister_class(PhysXSmokePreferences)
+    except RuntimeError:
+        pass
 
 
 if __name__ == "__main__":

@@ -132,8 +132,8 @@ def validate_simulation_inputs(props):
     if props.emitter_type == "mesh" and not props.mesh_object:
         return False, "Mesh object is required for mesh emitter type"
     
-    if props.emitter_type == "particles" and not props.particle_system:
-        return False, "Particle system is required for particles emitter type"
+    if props.emitter_type == "particles" and not props.particle_system_name:
+        return False, "Particle system name is required for particles emitter type"
     
     exe_path = get_executable_path()
     if not exe_path:

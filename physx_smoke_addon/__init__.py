@@ -27,7 +27,11 @@ def register():
     operators.register()
     preferences.register()
     
-    # Add to Physics menu
+    # Add to Physics menu (ensure not duplicated)
+    try:
+        bpy.types.PHYSICS_MT_add.remove(menu_func)
+    except ValueError:
+        pass
     bpy.types.PHYSICS_MT_add.append(menu_func)
 
 

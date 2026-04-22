@@ -45,12 +45,10 @@ class PHYSX_PT_smoke_simulation(Panel):
         # Conditional emitter settings
         if props.emitter_type == "sphere":
             box.prop(props, "emitter_radius")
-        elif props.emitter_type == "box":
-            box.prop(props, "emitter_size")
         elif props.emitter_type == "mesh":
             box.prop(props, "mesh_object", icon="MESH_DATA")
         elif props.emitter_type == "particles":
-            box.prop(props, "particle_system", icon="PARTICLE_DATA")
+            box.prop(props, "particle_system_name", icon="PARTICLE_DATA")
 
         box.prop(props, "emitter_temperature")
         box.prop(props, "emitter_smoke")
@@ -81,11 +79,18 @@ class PHYSX_PT_smoke_simulation(Panel):
 
 
 def register():
+    try:
+        bpy.utils.unregister_class(PHYSX_PT_smoke_simulation)
+    except RuntimeError:
+        pass
     bpy.utils.register_class(PHYSX_PT_smoke_simulation)
 
 
 def unregister():
-    bpy.utils.unregister_class(PHYSX_PT_smoke_simulation)
+    try:
+        bpy.utils.unregister_class(PHYSX_PT_smoke_simulation)
+    except RuntimeError:
+        pass
 
 
 if __name__ == "__main__":

@@ -77,7 +77,6 @@ def write_params_json(params, filepath):
     params_dict = {
         "emitter_type": params.emitter_type,
         "emitter_radius": params.emitter_radius,
-        "emitter_size": list(params.emitter_size),
         "emitter_temperature": params.emitter_temperature,
         "emitter_smoke": params.emitter_smoke,
         "emitter_velocity_y": params.emitter_velocity_y,
@@ -119,18 +118,53 @@ def build_command_args(params, temp_dir):
     # Export based on emitter type
     if params.emitter_type == "mesh" and params.mesh_object:
         export_mesh(params.mesh_object, mesh_file)
-    elif params.emitter_type == "particles" and params.particle_system:
-        export_particles(params.particle_system, particles_file)
+    elif params.emitter_type == "particles" and params.particle_system_name:
+        # Look up particle system by name from active object
+        obj = bpy.context.active_object
+        if obj and obj.particle_systems:
+            for ps in obj.particle_systems:
+                if ps.name == params.particle_system_name:
+                    export_particles(ps, particles_file)
+                    break
     
-    # Write parameters
+    # Write parameters as JSON for debugging (not used by executable)
     write_params_json(params, params_file)
     
-    # Build command
-    cmd = [
-        params_file,
+    # Map emitter type string to integer
+    emitter_type_map = {
+        "sphere": 0,
+        "mesh": 1,
+        "particles": 2,
+    }
+    emitter_type_int = emitter_type_map.get(params.emitter_type, 0)
+    
+    # Build command arguments list
+    cmd_args = [
+        "--frame-count", str(params.frame_count),
+        "--emitter-radius", str(params.emitter_radius),
+        "--emitter-temperature", str(params.emitter_temperature),
+        "--emitter-smoke", str(params.emitter_smoke),
+        "--emitter-velocity-y", str(params.emitter_velocity_y),
+        "--couple-rate-smoke", str(params.couple_rate_smoke),
+        "--nanoVdb-couple-rate", str(params.nanoVdb_couple_rate),
+        "--output-prefix", params.output_prefix,
+        "--emitter-type", str(emitter_type_int),
+        "--output-dir", params.output_dir,
     ]
     
-    return cmd, {
+    # Add velocity components if any non-zero (optional)
+    if abs(params.velocity[0]) > 1e-6 or abs(params.velocity[1]) > 1e-6 or abs(params.velocity[2]) > 1e-6:
+        cmd_args.extend(["--velocity-x", str(params.velocity[0])])
+        cmd_args.extend(["--velocity-y", str(params.velocity[1])])
+        cmd_args.extend(["--velocity-z", str(params.velocity[2])])
+    
+    # Add mesh or particle file if applicable
+    if params.emitter_type == "mesh" and params.mesh_object:
+        cmd_args.extend(["--mesh-file", mesh_file])
+    elif params.emitter_type == "particles" and params.particle_system_name:
+        cmd_args.extend(["--particle-file", particles_file])
+    
+    return cmd_args, {
         "mesh_file": mesh_file if params.emitter_type == "mesh" else None,
         "particles_file": particles_file if params.emitter_type == "particles" else None,
         "params_file": params_file,

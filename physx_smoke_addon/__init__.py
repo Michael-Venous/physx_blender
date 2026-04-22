@@ -1,7 +1,7 @@
 bl_info = {
     "name": "PhysX Smoke Simulation",
     "author": "PhysX Team",
-    "version": (1, 0, 0),
+    "version": (1, 1, 0),
     "blender": (5, 0, 0),
     "location": "Properties > Physics > PhysX Smoke Simulation",
     "description": "PhysX-based smoke simulation with OpenVDB output",

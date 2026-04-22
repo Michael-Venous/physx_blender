@@ -59,7 +59,7 @@ Access addon preferences via **Edit > Preferences > Add-ons > PhysX Smoke Simula
 
 ## Requirements
 
-- Blender 4.0 or later
+- Blender 5.0 or later
 - Linux (for bundled binaries)
 - OpenVDB support in Blender (for volume import)
 

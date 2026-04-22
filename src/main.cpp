@@ -104,6 +104,55 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
+    // Validate file existence
+    if (params.emitter_type == EMITTER_TYPE_MESH && params.mesh_file) {
+        struct stat st;
+        if (stat(params.mesh_file, &st) != 0 || !S_ISREG(st.st_mode)) {
+            std::cerr << "Error: Mesh file not found or not a regular file: " << params.mesh_file << "\n";
+            return 1;
+        }
+    }
+    if (params.emitter_type == EMITTER_TYPE_PARTICLES && params.particle_file) {
+        struct stat st;
+        if (stat(params.particle_file, &st) != 0 || !S_ISREG(st.st_mode)) {
+            std::cerr << "Error: Particle file not found or not a regular file: " << params.particle_file << "\n";
+            return 1;
+        }
+    }
+    if (params.velocity_file) {
+        struct stat st;
+        if (stat(params.velocity_file, &st) != 0 || !S_ISREG(st.st_mode)) {
+            std::cerr << "Error: Velocity file not found or not a regular file: " << params.velocity_file << "\n";
+            return 1;
+        }
+    }
+
+    // Validate numeric parameters
+    if (params.frame_count == 0) {
+        std::cerr << "Error: frame-count must be greater than 0\n";
+        return 1;
+    }
+    if (params.emitter_radius <= 0.0f) {
+        std::cerr << "Error: emitter-radius must be greater than 0\n";
+        return 1;
+    }
+    if (params.emitter_temperature < 0.0f) {
+        std::cerr << "Error: emitter-temperature must not be negative\n";
+        return 1;
+    }
+    if (params.emitter_smoke < 0.0f) {
+        std::cerr << "Error: emitter-smoke must not be negative\n";
+        return 1;
+    }
+    if (params.couple_rate_smoke < 0.0f) {
+        std::cerr << "Error: couple-rate-smoke must not be negative\n";
+        return 1;
+    }
+    if (params.nanoVdb_couple_rate < 0.0f) {
+        std::cerr << "Error: nanoVdb-couple-rate must not be negative\n";
+        return 1;
+    }
+
     // Create output directory if specified
     if (params.output_dir && !create_directory_if_not_exists(params.output_dir)) {
         std::cerr << "Error: Failed to create output directory: " << params.output_dir << "\n";

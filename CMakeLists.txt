@@ -7,13 +7,20 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(NVFLOW_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/vendor/PhysX/flow/include")
 set(NVFLOW_LIB_DIR "${CMAKE_CURRENT_SOURCE_DIR}/vendor/PhysX/flow/_build/linux-x86_64/release")
 
-add_executable(flow_to_nvdb_minimal src/main.cpp)
+add_executable(flow_to_nvdb_minimal src/main.cpp src/simulation.cpp)
 
 target_include_directories(flow_to_nvdb_minimal PRIVATE
     ${NVFLOW_INCLUDE_DIR}
     ${NVFLOW_INCLUDE_DIR}/nvflow
     ${NVFLOW_INCLUDE_DIR}/nvflow/shaders
     ${NVFLOW_INCLUDE_DIR}/nvflowext/shaders
+    /usr/include
+)
+
+target_link_libraries(flow_to_nvdb_minimal PRIVATE
+    openvdb
+    tbb
+    Imath
 )
 
 # Embed the library path directly into the executable's RPATH

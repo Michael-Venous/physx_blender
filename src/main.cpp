@@ -1,186 +1,178 @@
-#include <fstream>
 #include <iostream>
-#include <stdarg.h>
-#include <stdint.h>
-#include <stdio.h>
-#include <stdlib.h>
+#include <cstring>
+#include <cstdlib>
+#include <sys/stat.h>
 
 #include "nvflowext/NvFlowLoader.h"
-#include "nvflowext/shaders/NvFlowRayMarchParams.h"
+#include "simulation.h"
 
 static void flowLoaderError(const char *str, void *userdata) {
   std::cerr << "Flow Error: " << str << std::endl;
 }
 
-static void logPrint(NvFlowLogLevel level, const char *format, ...) {
-  va_list args;
-  va_start(args, format);
-  char buf[256u];
-  buf[0u] = '\0';
-  if (level == eNvFlowLogLevel_error) {
-    vsnprintf(buf, 256u, format, args);
-    std::cerr << "FlowError: " << buf << std::endl;
-  } else if (level == eNvFlowLogLevel_warning) {
-    vsnprintf(buf, 256u, format, args);
-    std::cerr << "FlowWarn: " << buf << std::endl;
-  } else if (level == eNvFlowLogLevel_info) {
-    vsnprintf(buf, 256u, format, args);
-    std::cout << "FlowInfo: " << buf << std::endl;
-  }
-  va_end(args);
+static void print_usage(const char* progname) {
+    std::cout << "Usage: " << progname << " [options]\n"
+              << "Options:\n"
+              << "  --frame-count <N>            Number of frames to simulate (default: 60)\n"
+              << "  --emitter-radius <F>         Radius of sphere emitter (default: 10.0)\n"
+              << "  --emitter-temperature <F>    Temperature of emitter (default: 1.0)\n"
+              << "  --emitter-smoke <F>          Smoke density of emitter (default: 1.0)\n"
+              << "  --emitter-velocity-y <F>     Y velocity of sphere emitter (default: 10.0)\n"
+              << "  --couple-rate-smoke <F>      Smoke coupling rate (default: 2.0)\n"
+              << "  --nanoVdb-couple-rate <F>    NanoVDB coupling rate (default: 1.0)\n"
+              << "  --output-prefix <S>          Prefix for output files (default: smoke_)\n"
+              << "  --emitter-type <N>           Emitter type: 0=sphere, 1=mesh, 2=particles (default: 0)\n"
+              << "  --mesh-file <path>           Path to OBJ file for mesh emitter\n"
+              << "  --particle-file <path>       Path to CSV file for particle emitter\n"
+              << "  --velocity-file <path>       Optional velocity override file\n"
+              << "  --velocity-x <F>             X component of velocity override\n"
+              << "  --velocity-y <F>             Y component of velocity override\n"
+              << "  --velocity-z <F>             Z component of velocity override\n"
+              << "  --output-dir <path>          Directory for output .vdb files (default: current dir)\n"
+              << "  --help                       Show this help message\n";
 }
 
-int main() {
-  NvFlowLoader loader = {};
-  NvFlowLoaderInitDeviceAPI(&loader, flowLoaderError, nullptr,
-                            eNvFlowContextApi_vulkan);
-
-  if (!loader.module_nvflow || !loader.module_nvflowext) {
-    std::cerr << "Failed to load NVIDIA Flow" << std::endl;
-    return 1;
-  }
-
-  std::cout << "Creating Device Manager" << std::endl;
-  NvFlowDeviceManager *deviceManager =
-      loader.deviceInterface.createDeviceManager(NV_FLOW_FALSE, nullptr, 0u);
-  NvFlowDeviceDesc deviceDesc = {};
-  deviceDesc.deviceIndex = 0;
-  deviceDesc.enableExternalUsage = NV_FLOW_FALSE;
-  deviceDesc.logPrint = logPrint;
-
-  std::cout << "Creating Device" << std::endl;
-  NvFlowDevice *device =
-      loader.deviceInterface.createDevice(deviceManager, &deviceDesc);
-
-  std::cout << "Getting Device Queue" << std::endl;
-  NvFlowDeviceQueue *deviceQueue =
-      loader.deviceInterface.getDeviceQueue(device);
-
-  NvFlowContextInterface contextInterface = {};
-  NvFlowContextInterface_duplicate(
-      &contextInterface,
-      loader.deviceInterface.getContextInterface(deviceQueue));
-  NvFlowContext *context = loader.deviceInterface.getContext(deviceQueue);
-
-  std::cout << "Creating Grid" << std::endl;
-  NvFlowGridDesc gridDesc = NvFlowGridDesc_default;
-  NvFlowGrid *grid = loader.gridInterface.createGrid(
-      &contextInterface, context, loader.opList_orig, loader.extOpList_orig,
-      &gridDesc);
-
-  std::cout << "Creating Grid Params Named" << std::endl;
-  NvFlowGridParamsNamed *gridParamsNamed =
-      loader.gridParamsInterface.createGridParamsNamed("flowUsd");
-
-  NvFlowGridParams *paramSrc =
-      loader.gridParamsInterface.mapGridParamsNamed(gridParamsNamed);
-
-  std::cout << "Running barebones prototype..." << std::endl;
-
-  for (uint32_t frame = 0; frame < 60; frame++) {
-    static NvFlowGridSimulateLayerParams testSimulate =
-        NvFlowGridSimulateLayerParams_default;
-    static NvFlowGridEmitterSphereParams testSpheres =
-        NvFlowEmitterSphereParams_default;
-    static NvFlowGridOffscreenLayerParams testOffscreen =
-        NvFlowGridOffscreenLayerParams_default;
-    static NvFlowGridRenderLayerParams testRender =
-        NvFlowGridRenderLayerParams_default;
-
-    testSimulate.nanoVdbExport.enabled = NV_FLOW_TRUE;
-    testSimulate.nanoVdbExport.readbackEnabled = NV_FLOW_TRUE;
-    testSimulate.nanoVdbExport.smokeEnabled = NV_FLOW_TRUE;
-
-    testSpheres.position = {0.0f, 0.0f, 0.0f};
-    testSpheres.radius = 10.0f;
-    testSpheres.temperature = 1.0f;
-    testSpheres.fuel = 0.0f;
-    testSpheres.smoke = 1.0f;
-    testSpheres.velocity = {0.0f, 10.0f, 0.0f};
-
-    static NvFlowGridSimulateLayerParams *pTestSimulate = &testSimulate;
-    static NvFlowGridEmitterSphereParams *pTestSpheres = &testSpheres;
-    static NvFlowGridOffscreenLayerParams *pTestOffscreen = &testOffscreen;
-    static NvFlowGridRenderLayerParams *pTestRender = &testRender;
-
-    static NvFlowUint64 version = 1u;
-
-    static NvFlowDatabaseTypeSnapshot typeSnapshots[4u] = {
-        {version, &NvFlowGridSimulateLayerParams_NvFlowReflectDataType,
-         (NvFlowUint8 **)&pTestSimulate, 1u},
-        {version, &NvFlowGridEmitterSphereParams_NvFlowReflectDataType,
-         (NvFlowUint8 **)&pTestSpheres, 1u},
-        {version, &NvFlowGridOffscreenLayerParams_NvFlowReflectDataType,
-         (NvFlowUint8 **)&pTestOffscreen, 1u},
-        {version, &NvFlowGridRenderLayerParams_NvFlowReflectDataType,
-         (NvFlowUint8 **)&pTestRender, 1u}};
-    static NvFlowDatabaseSnapshot snapshot = {version, typeSnapshots, 4u};
-
-    double absoluteSimTime = (double)frame;
-    static NvFlowGridParamsDescSnapshot gridParamsDescSnapshot = {
-        snapshot, absoluteSimTime, 1.f / 60.f, NV_FLOW_FALSE, nullptr, 0u};
-    gridParamsDescSnapshot.absoluteSimTime = absoluteSimTime; // Update time
-
-    loader.gridParamsInterface.commitParams(paramSrc, &gridParamsDescSnapshot);
-
-    NvFlowGridParamsDesc gridParamsDesc = {};
-    NvFlowGridParamsSnapshot *paramsSnapshot =
-        loader.gridParamsInterface.getParamsSnapshot(paramSrc, absoluteSimTime,
-                                                     0llu);
-
-    if (loader.gridParamsInterface.mapParamsDesc(paramSrc, paramsSnapshot,
-                                                 &gridParamsDesc)) {
-      std::cout << "  Calling simulate" << std::endl;
-      loader.gridInterface.simulate(context, grid, &gridParamsDesc,
-                                    NV_FLOW_FALSE);
-
-      std::cout << "  Getting render data" << std::endl;
-      NvFlowGridRenderData renderData = {};
-      loader.gridInterface.getRenderData(context, grid, &renderData);
-
-      std::cout << "  Flushing device queue" << std::endl;
-      NvFlowUint64 flushedFrameID = 0llu;
-      loader.deviceInterface.flush(deviceQueue, &flushedFrameID, nullptr,
-                                   nullptr);
-      std::cout << "  Waiting for frame " << flushedFrameID << std::endl;
-      loader.deviceInterface.waitForFrame(deviceQueue, flushedFrameID);
-
-      NvFlowUint64 lastCompletedFrame =
-          contextInterface.getLastFrameCompleted(context);
-
-      if (renderData.nanoVdb.readbackCount > 0u) {
-        for (NvFlowUint64 idx = renderData.nanoVdb.readbackCount - 1u;
-             idx < renderData.nanoVdb.readbackCount; idx--) {
-          const auto readback = renderData.nanoVdb.readbacks + idx;
-          if (lastCompletedFrame >= readback->globalFrameCompleted) {
-            if (readback->smokeNanoVdbReadbackSize > 0) {
-              std::cout << "Frame " << frame << " exported NanoVDB! Size: "
-                        << readback->smokeNanoVdbReadbackSize << " bytes"
-                        << std::endl;
-
-              std::string filename = "smoke_" + std::to_string(frame) + ".nvdb";
-              std::ofstream out(filename, std::ios::binary);
-              out.write(reinterpret_cast<const char *>(
-                            readback->smokeNanoVdbReadback),
-                        readback->smokeNanoVdbReadbackSize);
-              out.close();
-            }
-            break;
-          }
-        }
-      }
-      loader.gridParamsInterface.unmapParamsDesc(paramSrc, paramsSnapshot);
+static bool create_directory_if_not_exists(const char* path) {
+    if (!path || strlen(path) == 0) return true;
+    struct stat st;
+    if (stat(path, &st) == 0) {
+        return S_ISDIR(st.st_mode);
     }
-  }
+    return mkdir(path, 0755) == 0;
+}
 
-  loader.deviceInterface.waitIdle(deviceQueue);
-  loader.gridInterface.destroyGrid(context, grid);
-  loader.gridParamsInterface.destroyGridParamsNamed(gridParamsNamed);
+int main(int argc, char* argv[]) {
+    // Initialize params with defaults
+    SimulationParams params;
+    SimulationParams_InitDefaults(&params);
 
-  loader.deviceInterface.destroyDevice(deviceManager, device);
-  loader.deviceInterface.destroyDeviceManager(deviceManager);
-  NvFlowLoaderDestroy(&loader);
+    // Parse command-line arguments
+    for (int i = 1; i < argc; i++) {
+        if (strcmp(argv[i], "--help") == 0) {
+            print_usage(argv[0]);
+            return 0;
+        } else if (strcmp(argv[i], "--frame-count") == 0 && i + 1 < argc) {
+            params.frame_count = (uint32_t)atoi(argv[++i]);
+        } else if (strcmp(argv[i], "--emitter-radius") == 0 && i + 1 < argc) {
+            params.emitter_radius = (float)atof(argv[++i]);
+        } else if (strcmp(argv[i], "--emitter-temperature") == 0 && i + 1 < argc) {
+            params.emitter_temperature = (float)atof(argv[++i]);
+        } else if (strcmp(argv[i], "--emitter-smoke") == 0 && i + 1 < argc) {
+            params.emitter_smoke = (float)atof(argv[++i]);
+        } else if (strcmp(argv[i], "--emitter-velocity-y") == 0 && i + 1 < argc) {
+            params.emitter_velocity_y = (float)atof(argv[++i]);
+        } else if (strcmp(argv[i], "--couple-rate-smoke") == 0 && i + 1 < argc) {
+            params.couple_rate_smoke = (float)atof(argv[++i]);
+        } else if (strcmp(argv[i], "--nanoVdb-couple-rate") == 0 && i + 1 < argc) {
+            params.nanoVdb_couple_rate = (float)atof(argv[++i]);
+        } else if (strcmp(argv[i], "--output-prefix") == 0 && i + 1 < argc) {
+            params.output_filename_prefix = argv[++i];
+        } else if (strcmp(argv[i], "--emitter-type") == 0 && i + 1 < argc) {
+            params.emitter_type = atoi(argv[++i]);
+            if (params.emitter_type < 0 || params.emitter_type > 2) {
+                std::cerr << "Error: emitter-type must be 0 (sphere), 1 (mesh), or 2 (particles)\n";
+                return 1;
+            }
+        } else if (strcmp(argv[i], "--mesh-file") == 0 && i + 1 < argc) {
+            params.mesh_file = argv[++i];
+        } else if (strcmp(argv[i], "--particle-file") == 0 && i + 1 < argc) {
+            params.particle_file = argv[++i];
+        } else if (strcmp(argv[i], "--velocity-file") == 0 && i + 1 < argc) {
+            params.velocity_file = argv[++i];
+        } else if (strcmp(argv[i], "--velocity-x") == 0 && i + 1 < argc) {
+            params.velocity[0] = (float)atof(argv[++i]);
+        } else if (strcmp(argv[i], "--velocity-y") == 0 && i + 1 < argc) {
+            params.velocity[1] = (float)atof(argv[++i]);
+        } else if (strcmp(argv[i], "--velocity-z") == 0 && i + 1 < argc) {
+            params.velocity[2] = (float)atof(argv[++i]);
+        } else if (strcmp(argv[i], "--output-dir") == 0 && i + 1 < argc) {
+            params.output_dir = argv[++i];
+        } else {
+            std::cerr << "Error: Unknown argument: " << argv[i] << "\n";
+            print_usage(argv[0]);
+            return 1;
+        }
+    }
 
-  std::cout << "Simulation complete!" << std::endl;
-  return 0;
+    // Validate emitter type requirements
+    if (params.emitter_type == EMITTER_TYPE_MESH && !params.mesh_file) {
+        std::cerr << "Error: --mesh-file is required for mesh emitter type\n";
+        return 1;
+    }
+    if (params.emitter_type == EMITTER_TYPE_PARTICLES && !params.particle_file) {
+        std::cerr << "Error: --particle-file is required for particle emitter type\n";
+        return 1;
+    }
+
+    // Validate file existence
+    if (params.emitter_type == EMITTER_TYPE_MESH && params.mesh_file) {
+        struct stat st;
+        if (stat(params.mesh_file, &st) != 0 || !S_ISREG(st.st_mode)) {
+            std::cerr << "Error: Mesh file not found or not a regular file: " << params.mesh_file << "\n";
+            return 1;
+        }
+    }
+    if (params.emitter_type == EMITTER_TYPE_PARTICLES && params.particle_file) {
+        struct stat st;
+        if (stat(params.particle_file, &st) != 0 || !S_ISREG(st.st_mode)) {
+            std::cerr << "Error: Particle file not found or not a regular file: " << params.particle_file << "\n";
+            return 1;
+        }
+    }
+    if (params.velocity_file) {
+        struct stat st;
+        if (stat(params.velocity_file, &st) != 0 || !S_ISREG(st.st_mode)) {
+            std::cerr << "Error: Velocity file not found or not a regular file: " << params.velocity_file << "\n";
+            return 1;
+        }
+    }
+
+    // Validate numeric parameters
+    if (params.frame_count == 0) {
+        std::cerr << "Error: frame-count must be greater than 0\n";
+        return 1;
+    }
+    if (params.emitter_radius <= 0.0f) {
+        std::cerr << "Error: emitter-radius must be greater than 0\n";
+        return 1;
+    }
+    if (params.emitter_temperature < 0.0f) {
+        std::cerr << "Error: emitter-temperature must not be negative\n";
+        return 1;
+    }
+    if (params.emitter_smoke < 0.0f) {
+        std::cerr << "Error: emitter-smoke must not be negative\n";
+        return 1;
+    }
+    if (params.couple_rate_smoke < 0.0f) {
+        std::cerr << "Error: couple-rate-smoke must not be negative\n";
+        return 1;
+    }
+    if (params.nanoVdb_couple_rate < 0.0f) {
+        std::cerr << "Error: nanoVdb-couple-rate must not be negative\n";
+        return 1;
+    }
+
+    // Create output directory if specified
+    if (params.output_dir && !create_directory_if_not_exists(params.output_dir)) {
+        std::cerr << "Error: Failed to create output directory: " << params.output_dir << "\n";
+        return 1;
+    }
+
+    // Initialize NvFlow
+    NvFlowLoader loader = {};
+    NvFlowLoaderInitDeviceAPI(&loader, flowLoaderError, nullptr,
+                              eNvFlowContextApi_vulkan);
+
+    if (!loader.module_nvflow || !loader.module_nvflowext) {
+        std::cerr << "Failed to load NVIDIA Flow" << std::endl;
+        return 1;
+    }
+
+    run_simulation(&loader, &params);
+
+    NvFlowLoaderDestroy(&loader);
+
+    std::cout << "Simulation complete!" << std::endl;
+    return 0;
 }

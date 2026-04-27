@@ -28,17 +28,9 @@ class PhysXSmokeProperties(bpy.types.PropertyGroup):
     emitter_radius: FloatProperty(
         name="Emitter Radius",
         description="Radius of the spherical emitter",
-        default=1.0,
+        default=10.0,
         min=0.01,
         subtype="DISTANCE",
-    )
-    
-    emitter_size: FloatVectorProperty(
-        name="Emitter Size",
-        description="Size of the box emitter (X, Y, Z)",
-        default=(1.0, 1.0, 1.0),
-        size=3,
-        subtype="XYZ",
     )
     
     emitter_temperature: FloatProperty(
@@ -54,30 +46,22 @@ class PhysXSmokeProperties(bpy.types.PropertyGroup):
         description="Density of emitted smoke",
         default=1.0,
         min=0.0,
-        max=1.0,
+        soft_max=5.0,
     )
     
     emitter_velocity_y: FloatProperty(
         name="Emitter Velocity Y",
         description="Initial velocity in Y direction",
-        default=0.0,
+        default=10.0,
     )
     
     # Smoke Parameters
     couple_rate_smoke: FloatProperty(
         name="Smoke Coupling Rate",
-        description="Coupling rate for smoke simulation",
-        default=1.0,
+        description="How much smoke enters the grid per frame",
+        default=2.0,
         min=0.0,
-        max=1.0,
-    )
-    
-    nanoVdb_couple_rate: FloatProperty(
-        name="nanoVDB Coupling Rate",
-        description="Coupling rate for nanoVDB output",
-        default=1.0,
-        min=0.0,
-        max=1.0,
+        soft_max=10.0,
     )
     
     # Simulation Settings
@@ -90,8 +74,8 @@ class PhysXSmokeProperties(bpy.types.PropertyGroup):
     
     velocity: FloatVectorProperty(
         name="Initial Velocity",
-        description="Initial velocity vector for smoke",
-        default=(0.0, 1.0, 0.0),
+        description="Initial velocity vector for emitted smoke",
+        default=(0.0, 20.0, 0.0),
         size=3,
         subtype="VELOCITY",
     )

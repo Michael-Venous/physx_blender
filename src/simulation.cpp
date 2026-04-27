@@ -152,10 +152,6 @@ static bool load_particle_file(const char* filename, std::vector<ParticleData>& 
     return true;
 }
 
-static void flowLoaderError(const char *str, void *userdata) {
-  std::cerr << "Flow Error: " << str << std::endl;
-}
-
 static void logPrint(NvFlowLogLevel level, const char *format, ...) {
   va_list args;
   va_start(args, format);
@@ -215,6 +211,8 @@ void run_simulation(NvFlowLoader* loader, const SimulationParams* params) {
 
   std::cout << "Creating Grid" << std::endl;
   NvFlowGridDesc gridDesc = NvFlowGridDesc_default;
+  gridDesc.maxLocations = (params->resolution / 32) * (params->resolution / 32) * (params->resolution / 8);
+  if (gridDesc.maxLocations < 4096u) gridDesc.maxLocations = 4096u;
   NvFlowGrid *grid = loader->gridInterface.createGrid(
       &contextInterface, context, loader->opList_orig, loader->extOpList_orig,
       &gridDesc);
@@ -256,9 +254,13 @@ void run_simulation(NvFlowLoader* loader, const SimulationParams* params) {
   }
 
   // Determine velocity to use
-  float vel_x = (params->velocity[0] != 0.0f) ? params->velocity[0] : 0.0f;
-  float vel_y = (params->velocity[1] != 0.0f) ? params->velocity[1] : params->emitter_velocity_y;
-  float vel_z = (params->velocity[2] != 0.0f) ? params->velocity[2] : 0.0f;
+  float vel_x = params->velocity[0];
+  float vel_y = params->emitter_velocity_y;
+  float vel_z = params->velocity[2];
+
+  if (params->velocity[0] != 0.0f) vel_x = params->velocity[0];
+  if (params->velocity[1] != 0.0f) vel_y = params->velocity[1];
+  if (params->velocity[2] != 0.0f) vel_z = params->velocity[2];
 
   // Pre-allocate mesh emitter params for mesh type
   NvFlowGridEmitterMeshParams meshEmitterParams = NvFlowEmitterMeshParams_default;
@@ -285,8 +287,12 @@ void run_simulation(NvFlowLoader* loader, const SimulationParams* params) {
       for (const auto& face : objMesh.faces) {
           meshFaceCounts.push_back((int)face.vertex_indices.size());
           for (int idx : face.vertex_indices) {
-              // OBJ uses 1-based indexing, convert to 0-based
-              meshFaceIndices.push_back(idx - 1);
+              if (idx < 0) {
+                  idx = (int)objMesh.vertices.size() + idx;
+              } else {
+                  idx = idx - 1;
+              }
+              meshFaceIndices.push_back(idx);
           }
       }
 
@@ -348,9 +354,11 @@ void run_simulation(NvFlowLoader* loader, const SimulationParams* params) {
       particleEmitterParams.coupleRateSmoke = params->couple_rate_smoke;
   }
 
+  openvdb::initialize();
+
   std::cout << "Running simulation..." << std::endl;
 
-  for (uint32_t frame = 0; frame < params->frame_count; frame++) {
+  for (uint32_t frame = params->start_frame; frame < params->start_frame + params->frame_count; frame++) {
     static NvFlowGridSimulateLayerParams testSimulate =
         NvFlowGridSimulateLayerParams_default;
     static NvFlowGridEmitterSphereParams testSpheres =
@@ -363,16 +371,29 @@ void run_simulation(NvFlowLoader* loader, const SimulationParams* params) {
     testSimulate.nanoVdbExport.enabled = NV_FLOW_TRUE;
     testSimulate.nanoVdbExport.readbackEnabled = NV_FLOW_TRUE;
     testSimulate.nanoVdbExport.smokeEnabled = NV_FLOW_TRUE;
+    testSimulate.nanoVdbExport.velocityEnabled = NV_FLOW_FALSE;
+    testSimulate.stepsPerSecond = params->fps;
 
     // Set up emitter based on type
     if (effective_emitter_type == EMITTER_TYPE_SPHERE) {
-        testSpheres.position = {0.0f, 0.0f, 0.0f};
+        testSpheres.enabled = NV_FLOW_TRUE;
+        testSpheres.position = {params->emitter_position[0],
+                                params->emitter_position[1],
+                                params->emitter_position[2]};
         testSpheres.radius = params->emitter_radius;
+        testSpheres.radiusIsWorldSpace = NV_FLOW_TRUE;
         testSpheres.temperature = params->emitter_temperature;
         testSpheres.fuel = 0.0f;
         testSpheres.smoke = params->emitter_smoke;
-        testSpheres.velocity = {vel_x, vel_y, vel_z};
+
+        float obj_vx = params->object_velocity[0];
+        float obj_vy = params->object_velocity[1];
+        float obj_vz = params->object_velocity[2];
+        testSpheres.velocity = {vel_x + obj_vx, vel_y + obj_vy, vel_z + obj_vz};
+
         testSpheres.coupleRateSmoke = params->couple_rate_smoke;
+        testSpheres.coupleRateVelocity = params->couple_rate_smoke;
+        testSpheres.coupleRateTemperature = params->couple_rate_smoke;
     }
 
     static NvFlowGridSimulateLayerParams *pTestSimulate = &testSimulate;
@@ -412,11 +433,13 @@ void run_simulation(NvFlowLoader* loader, const SimulationParams* params) {
     snapshot.typeSnapshots = typeSnapshots.data();
     snapshot.typeSnapshotCount = typeSnapshots.size();
 
-    double absoluteSimTime = (double)frame / 60.0;
+    double absoluteSimTime = (double)frame / (double)params->fps;
+    float timeStep = 1.0f / params->fps;
     static NvFlowGridParamsDescSnapshot gridParamsDescSnapshot = {
-        snapshot, absoluteSimTime, 1.f / 60.f, NV_FLOW_FALSE, nullptr, 0u};
+        snapshot, absoluteSimTime, timeStep, NV_FLOW_FALSE, nullptr, 0u};
     gridParamsDescSnapshot.snapshot = snapshot;
     gridParamsDescSnapshot.absoluteSimTime = absoluteSimTime;
+    gridParamsDescSnapshot.deltaTime = timeStep;
 
     loader->gridParamsInterface.commitParams(paramSrc, &gridParamsDescSnapshot);
 
@@ -455,23 +478,24 @@ void run_simulation(NvFlowLoader* loader, const SimulationParams* params) {
                         << readback->smokeNanoVdbReadbackSize << " bytes"
                         << std::endl;
 
-              // Create GridHandle from the raw NanoVDB buffer
               auto buffer = nanovdb::HostBuffer::createFull(
                   readback->smokeNanoVdbReadbackSize,
                   readback->smokeNanoVdbReadback);
               nanovdb::GridHandle<nanovdb::HostBuffer> handle(std::move(buffer));
 
-              // Initialize OpenVDB
-              openvdb::initialize();
-
-              // Convert NanoVDB to OpenVDB using the free-standing function
               auto openvdbGrid = nanovdb::tools::nanoToOpenVDB(handle, 0);
+              if (!openvdbGrid) {
+                  std::cerr << "Warning: Failed to convert NanoVDB to OpenVDB for frame "
+                            << frame << std::endl;
+                  continue;
+              }
+              openvdbGrid->setName("density");
 
-              // Write to OpenVDB file
               std::string filename = build_output_path(params, frame);
               openvdb::GridPtrVec grids;
               grids.push_back(openvdbGrid);
               openvdb::io::File file(filename);
+              file.setCompression(openvdb::io::COMPRESS_NONE);
               file.write(grids);
               file.close();
 

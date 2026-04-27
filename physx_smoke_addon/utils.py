@@ -69,11 +69,9 @@ def run_simulation(cmd, env=None, cwd=None):
     """
     logger.info(f"Running simulation: {' '.join(cmd)}")
     
-    # Set up environment
     if env is None:
         env = os.environ.copy()
     
-    # Add bundled library path to LD_LIBRARY_PATH
     lib_path = get_bundled_lib_path()
     if os.path.exists(lib_path):
         current_ld_path = env.get("LD_LIBRARY_PATH", "")
@@ -92,7 +90,6 @@ def run_simulation(cmd, env=None, cwd=None):
             check=False,
         )
         
-        # Log output
         if result.stdout:
             logger.info(f"STDOUT: {result.stdout}")
         if result.stderr:
@@ -105,6 +102,43 @@ def run_simulation(cmd, env=None, cwd=None):
     except Exception as e:
         logger.error(f"Simulation failed: {e}")
         raise
+
+
+def run_simulation_async(cmd, env=None, cwd=None):
+    """
+    Run simulation subprocess asynchronously, returning the Popen object.
+    
+    Args:
+        cmd: List of command arguments
+        env: Optional environment variables dict
+        cwd: Optional working directory
+    
+    Returns:
+        subprocess.Popen instance
+    """
+    logger.info(f"Running simulation (async): {' '.join(cmd)}")
+
+    process_env = os.environ.copy()
+    if env:
+        process_env.update(env)
+
+    lib_path = get_bundled_lib_path()
+    if os.path.exists(lib_path):
+        current_ld_path = process_env.get("LD_LIBRARY_PATH", "")
+        if current_ld_path:
+            process_env["LD_LIBRARY_PATH"] = f"{lib_path}:{current_ld_path}"
+        else:
+            process_env["LD_LIBRARY_PATH"] = lib_path
+
+    process = subprocess.Popen(
+        cmd,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        env=process_env,
+        cwd=cwd,
+    )
+    return process
 
 
 def show_message_box(message, title="PhysX Smoke", icon="INFO"):
@@ -142,17 +176,20 @@ def validate_simulation_inputs(props):
     if not os.path.exists(exe_path):
         return False, f"Simulation executable not found at: {exe_path}"
     
+    if not os.access(exe_path, os.X_OK):
+        return False, f"Simulation executable is not executable: {exe_path}"
+    
     return True, ""
 
 
 def cleanup_baked_data(output_dir, prefix):
     """Delete all baked VDB files from the output directory."""
     if not os.path.exists(output_dir):
-        return
+        return 0
     
     count = 0
     for filename in os.listdir(output_dir):
-        if filename.startswith(prefix) and filename.endswith((".nvdb", ".vdb")):
+        if filename.startswith(prefix) and (filename.endswith(".nvdb") or filename.endswith(".vdb")):
             filepath = os.path.join(output_dir, filename)
             try:
                 os.remove(filepath)

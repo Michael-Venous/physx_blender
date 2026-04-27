@@ -14,12 +14,12 @@ static void print_usage(const char* progname) {
     std::cout << "Usage: " << progname << " [options]\n"
               << "Options:\n"
               << "  --frame-count <N>            Number of frames to simulate (default: 60)\n"
+              << "  --start-frame <N>            Frame to start simulation from (default: 0)\n"
               << "  --emitter-radius <F>         Radius of sphere emitter (default: 10.0)\n"
               << "  --emitter-temperature <F>    Temperature of emitter (default: 1.0)\n"
               << "  --emitter-smoke <F>          Smoke density of emitter (default: 1.0)\n"
               << "  --emitter-velocity-y <F>     Y velocity of sphere emitter (default: 10.0)\n"
               << "  --couple-rate-smoke <F>      Smoke coupling rate (default: 2.0)\n"
-              << "  --nanoVdb-couple-rate <F>    NanoVDB coupling rate (default: 1.0)\n"
               << "  --output-prefix <S>          Prefix for output files (default: smoke_)\n"
               << "  --emitter-type <N>           Emitter type: 0=sphere, 1=mesh, 2=particles (default: 0)\n"
               << "  --mesh-file <path>           Path to OBJ file for mesh emitter\n"
@@ -29,6 +29,20 @@ static void print_usage(const char* progname) {
               << "  --velocity-y <F>             Y component of velocity override\n"
               << "  --velocity-z <F>             Z component of velocity override\n"
               << "  --output-dir <path>          Directory for output .vdb files (default: current dir)\n"
+              << "  --fps <F>                    Frames per second (default: 60.0)\n"
+              << "  --resolution <N>             Grid resolution (default: 64)\n"
+              << "  --gravity-x <F>              Gravity X component (default: 0.0)\n"
+              << "  --gravity-y <F>              Gravity Y component (default: -9.81)\n"
+              << "  --gravity-z <F>              Gravity Z component (default: 0.0)\n"
+              << "  --turbulence <F>             Turbulence strength (default: 0.0)\n"
+              << "  --vorticity <F>              Vorticity confinement (default: 0.0)\n"
+              << "  --dissipation <F>            Smoke dissipation (default: 0.0)\n"
+              << "  --emitter-pos-x <F>          Emitter world position X (default: 0.0)\n"
+              << "  --emitter-pos-y <F>          Emitter world position Y (default: 0.0)\n"
+              << "  --emitter-pos-z <F>          Emitter world position Z (default: 0.0)\n"
+              << "  --object-vel-x <F>           Object velocity X for advection (default: 0.0)\n"
+              << "  --object-vel-y <F>           Object velocity Y for advection (default: 0.0)\n"
+              << "  --object-vel-z <F>           Object velocity Z for advection (default: 0.0)\n"
               << "  --help                       Show this help message\n";
 }
 
@@ -53,6 +67,8 @@ int main(int argc, char* argv[]) {
             return 0;
         } else if (strcmp(argv[i], "--frame-count") == 0 && i + 1 < argc) {
             params.frame_count = (uint32_t)atoi(argv[++i]);
+        } else if (strcmp(argv[i], "--start-frame") == 0 && i + 1 < argc) {
+            params.start_frame = (uint32_t)atoi(argv[++i]);
         } else if (strcmp(argv[i], "--emitter-radius") == 0 && i + 1 < argc) {
             params.emitter_radius = (float)atof(argv[++i]);
         } else if (strcmp(argv[i], "--emitter-temperature") == 0 && i + 1 < argc) {
@@ -63,8 +79,6 @@ int main(int argc, char* argv[]) {
             params.emitter_velocity_y = (float)atof(argv[++i]);
         } else if (strcmp(argv[i], "--couple-rate-smoke") == 0 && i + 1 < argc) {
             params.couple_rate_smoke = (float)atof(argv[++i]);
-        } else if (strcmp(argv[i], "--nanoVdb-couple-rate") == 0 && i + 1 < argc) {
-            params.nanoVdb_couple_rate = (float)atof(argv[++i]);
         } else if (strcmp(argv[i], "--output-prefix") == 0 && i + 1 < argc) {
             params.output_filename_prefix = argv[++i];
         } else if (strcmp(argv[i], "--emitter-type") == 0 && i + 1 < argc) {
@@ -87,6 +101,34 @@ int main(int argc, char* argv[]) {
             params.velocity[2] = (float)atof(argv[++i]);
         } else if (strcmp(argv[i], "--output-dir") == 0 && i + 1 < argc) {
             params.output_dir = argv[++i];
+        } else if (strcmp(argv[i], "--fps") == 0 && i + 1 < argc) {
+            params.fps = (float)atof(argv[++i]);
+        } else if (strcmp(argv[i], "--resolution") == 0 && i + 1 < argc) {
+            params.resolution = atoi(argv[++i]);
+        } else if (strcmp(argv[i], "--gravity-x") == 0 && i + 1 < argc) {
+            params.gravity[0] = (float)atof(argv[++i]);
+        } else if (strcmp(argv[i], "--gravity-y") == 0 && i + 1 < argc) {
+            params.gravity[1] = (float)atof(argv[++i]);
+        } else if (strcmp(argv[i], "--gravity-z") == 0 && i + 1 < argc) {
+            params.gravity[2] = (float)atof(argv[++i]);
+        } else if (strcmp(argv[i], "--turbulence") == 0 && i + 1 < argc) {
+            params.turbulence = (float)atof(argv[++i]);
+        } else if (strcmp(argv[i], "--vorticity") == 0 && i + 1 < argc) {
+            params.vorticity = (float)atof(argv[++i]);
+        } else if (strcmp(argv[i], "--dissipation") == 0 && i + 1 < argc) {
+            params.dissipation = (float)atof(argv[++i]);
+        } else if (strcmp(argv[i], "--emitter-pos-x") == 0 && i + 1 < argc) {
+            params.emitter_position[0] = (float)atof(argv[++i]);
+        } else if (strcmp(argv[i], "--emitter-pos-y") == 0 && i + 1 < argc) {
+            params.emitter_position[1] = (float)atof(argv[++i]);
+        } else if (strcmp(argv[i], "--emitter-pos-z") == 0 && i + 1 < argc) {
+            params.emitter_position[2] = (float)atof(argv[++i]);
+        } else if (strcmp(argv[i], "--object-vel-x") == 0 && i + 1 < argc) {
+            params.object_velocity[0] = (float)atof(argv[++i]);
+        } else if (strcmp(argv[i], "--object-vel-y") == 0 && i + 1 < argc) {
+            params.object_velocity[1] = (float)atof(argv[++i]);
+        } else if (strcmp(argv[i], "--object-vel-z") == 0 && i + 1 < argc) {
+            params.object_velocity[2] = (float)atof(argv[++i]);
         } else {
             std::cerr << "Error: Unknown argument: " << argv[i] << "\n";
             print_usage(argv[0]);
@@ -148,8 +190,24 @@ int main(int argc, char* argv[]) {
         std::cerr << "Error: couple-rate-smoke must not be negative\n";
         return 1;
     }
-    if (params.nanoVdb_couple_rate < 0.0f) {
-        std::cerr << "Error: nanoVdb-couple-rate must not be negative\n";
+    if (params.fps <= 0.0f) {
+        std::cerr << "Error: fps must be greater than 0\n";
+        return 1;
+    }
+    if (params.resolution < 16) {
+        std::cerr << "Error: resolution must be at least 16\n";
+        return 1;
+    }
+    if (params.turbulence < 0.0f) {
+        std::cerr << "Error: turbulence must not be negative\n";
+        return 1;
+    }
+    if (params.vorticity < 0.0f) {
+        std::cerr << "Error: vorticity must not be negative\n";
+        return 1;
+    }
+    if (params.dissipation < 0.0f || params.dissipation > 1.0f) {
+        std::cerr << "Error: dissipation must be between 0 and 1\n";
         return 1;
     }
 

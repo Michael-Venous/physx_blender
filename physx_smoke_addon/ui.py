@@ -10,8 +10,7 @@ class PHYSX_PT_smoke_simulation(Panel):
     bl_space_type = "PROPERTIES"
     bl_region_type = "WINDOW"
     bl_context = "physics"
-    bl_category = "PHYSICS"
-    bl_options = {"DEFAULT_CLOSED"}
+
 
     @classmethod
     def poll(cls, context):
@@ -40,7 +39,7 @@ class PHYSX_PT_smoke_simulation(Panel):
 
         # Emitter Settings
         box = layout.box()
-        box.prop(props, "emitter_type", icon="EMITTER")
+        box.prop(props, "emitter_type", icon="PHYSICS")
 
         # Conditional emitter settings
         if props.emitter_type == "sphere":
@@ -52,13 +51,11 @@ class PHYSX_PT_smoke_simulation(Panel):
 
         box.prop(props, "emitter_temperature")
         box.prop(props, "emitter_smoke")
-        box.prop(props, "emitter_velocity_y")
 
         # Smoke Parameters
         box = layout.box()
-        box.label(text="Smoke Parameters", icon="SMOKE")
+        box.label(text="Smoke Parameters", icon="MOD_FLUIDSIM")
         box.prop(props, "couple_rate_smoke")
-        box.prop(props, "nanoVdb_couple_rate")
         box.prop(props, "velocity")
 
         # Simulation Settings

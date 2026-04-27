@@ -26,19 +26,27 @@ def register():
     ui.register()
     operators.register()
     preferences.register()
-    
-    # Add to Physics menu (ensure not duplicated)
-    try:
-        bpy.types.PHYSICS_MT_add.remove(menu_func)
-    except ValueError:
-        pass
-    bpy.types.PHYSICS_MT_add.append(menu_func)
+
+    physics_menu = getattr(bpy.types, 'PHYSICS_PT_add',
+                           getattr(bpy.types, 'PHYSICS_MT_add', None))
+    if physics_menu:
+        try:
+            physics_menu.remove(menu_func)
+        except (ValueError, AttributeError):
+            pass
+        physics_menu.append(menu_func)
 
 
 def unregister():
     """Unregister all addon classes and properties."""
-    bpy.types.PHYSICS_MT_add.remove(menu_func)
-    
+    physics_menu = getattr(bpy.types, 'PHYSICS_PT_add',
+                           getattr(bpy.types, 'PHYSICS_MT_add', None))
+    if physics_menu:
+        try:
+            physics_menu.remove(menu_func)
+        except (ValueError, AttributeError):
+            pass
+
     preferences.unregister()
     operators.unregister()
     ui.unregister()

@@ -1,18 +1,22 @@
 import os
 import bpy
+import threading
+import logging
 from bpy.types import Operator
 from bpy.props import StringProperty
 from .utils import (
     get_executable_path,
     get_bundled_lib_path,
     temp_dir,
-    run_simulation,
+    run_simulation_async,
     show_message_box,
     validate_simulation_inputs,
     cleanup_baked_data,
 )
 from .exporters import build_command_args
 from .importers import import_vdb_sequence
+
+logger = logging.getLogger(__name__)
 
 
 class BAKE_OT_physx_smoke(Operator):
@@ -24,19 +28,45 @@ class BAKE_OT_physx_smoke(Operator):
     
     _timer = None
     _running = False
+    _process = None
     _result = None
-    
+    _thread = None
+    _tmpdir = None
+
+    def _run_subprocess(self, cmd, env, cwd):
+        try:
+            process = run_simulation_async(cmd, env=env, cwd=cwd)
+            self._process = process
+            stdout, stderr = process.communicate()
+            self._result = type("Result", (), {
+                "returncode": process.returncode,
+                "stdout": stdout or "",
+                "stderr": stderr or "",
+            })()
+        except Exception as e:
+            self._result = type("Result", (), {
+                "returncode": -1,
+                "stdout": "",
+                "stderr": str(e),
+            })()
+
     def modal(self, context, event):
         if event.type == "TIMER":
+            props = context.scene.physx_smoke
+
             if self._result is not None:
-                # Simulation finished
                 wm = context.window_manager
                 wm.event_timer_remove(self._timer)
-                
-                props = context.scene.physx_smoke
-                
+                if self._thread:
+                    self._thread.join(timeout=1.0)
+                    self._thread = None
+
+                if self._tmpdir:
+                    import shutil
+                    shutil.rmtree(self._tmpdir, ignore_errors=True)
+                    self._tmpdir = None
+
                 if self._result.returncode == 0:
-                    # Import VDB sequence
                     try:
                         imported = import_vdb_sequence(props.output_dir, props.output_prefix)
                         props.simulation_state = "baked"
@@ -47,6 +77,7 @@ class BAKE_OT_physx_smoke(Operator):
                             "CHECKMARK",
                         )
                     except Exception as e:
+                        logger.error(f"Import failed: {e}")
                         props.simulation_state = "idle"
                         show_message_box(
                             f"Simulation completed but import failed: {e}",
@@ -60,28 +91,42 @@ class BAKE_OT_physx_smoke(Operator):
                         "Simulation Error",
                         "ERROR",
                     )
-                
+
+                self._running = False
+                self._process = None
+                return {"FINISHED"}
+
+            if props.simulation_state == "stopped" and self._process is not None:
+                self._process.terminate()
+                try:
+                    self._process.wait(timeout=5)
+                except Exception:
+                    self._process.kill()
+                self._process = None
+                if self._tmpdir:
+                    import shutil
+                    shutil.rmtree(self._tmpdir, ignore_errors=True)
+                    self._tmpdir = None
+                wm = context.window_manager
+                wm.event_timer_remove(self._timer)
                 self._running = False
                 return {"FINISHED"}
-        
+
         return {"PASS_THROUGH"}
-    
+
     def execute(self, context):
         props = context.scene.physx_smoke
-        
-        # Validate inputs
+
         is_valid, error_msg = validate_simulation_inputs(props)
         if not is_valid:
             show_message_box(error_msg, "Validation Error", "ERROR")
             return {"CANCELLED"}
-        
-        # Get executable path
+
         exe_path = get_executable_path()
         if not exe_path:
             show_message_box("Simulation executable not found. Please check addon preferences.", "Error", "ERROR")
             return {"CANCELLED"}
-        
-        # Set up environment
+
         env = os.environ.copy()
         lib_path = get_bundled_lib_path()
         if os.path.exists(lib_path):
@@ -90,34 +135,41 @@ class BAKE_OT_physx_smoke(Operator):
                 env["LD_LIBRARY_PATH"] = f"{lib_path}:{current_ld_path}"
             else:
                 env["LD_LIBRARY_PATH"] = lib_path
-        
-        # Build command
-        with temp_dir() as tmpdir:
-            try:
-                cmd_args, files = build_command_args(props, tmpdir)
-                cmd = [exe_path] + cmd_args
-                
-                # Run simulation synchronously for now
-                # For long simulations, consider threading
-                self._result = run_simulation(cmd, env=env, cwd=tmpdir)
-                
-                # Trigger modal to handle import
-                props.simulation_state = "baking"
-                props.baked_frames = 0
-                
-                wm = context.window_manager
-                self._timer = wm.event_timer_add(0.1, window=context.window)
-                wm.modal_handler_add(self)
-                self._running = True
-                
-                return {"RUNNING_MODAL"}
-                
-            except Exception as e:
-                show_message_box(f"Simulation failed: {e}", "Error", "ERROR")
-                return {"CANCELLED"}
-    
+
+        import tempfile
+        self._tmpdir = tempfile.mkdtemp(prefix="physx_smoke_")
+
+        try:
+            cmd_args, _ = build_command_args(props, self._tmpdir)
+            cmd = [exe_path] + cmd_args
+        except Exception as e:
+            import shutil
+            shutil.rmtree(self._tmpdir, ignore_errors=True)
+            self._tmpdir = None
+            show_message_box(f"Failed to build command: {e}", "Error", "ERROR")
+            return {"CANCELLED"}
+
+        self._result = None
+        self._process = None
+        self._thread = threading.Thread(
+            target=self._run_subprocess, args=(cmd, env, self._tmpdir), daemon=True
+        )
+        self._thread.start()
+
+        props.simulation_state = "baking"
+        props.baked_frames = 0
+
+        wm = context.window_manager
+        self._timer = wm.event_timer_add(0.1, window=context.window)
+        wm.modal_handler_add(self)
+        self._running = True
+
+        return {"RUNNING_MODAL"}
+
     def cancel(self, context):
         if self._running:
+            if self._process:
+                self._process.terminate()
             props = context.scene.physx_smoke
             props.simulation_state = "idle"
             props.baked_frames = 0
@@ -151,12 +203,11 @@ class CONTINUE_OT_physx_smoke(Operator):
         props = context.scene.physx_smoke
         
         if props.simulation_state == "stopped":
-            # Restart from where we left off
-            props.simulation_state = "idle"
-            # Trigger bake operator
+            bpy.ops.physx_smoke.bake()
+        elif props.simulation_state == "baked":
             bpy.ops.physx_smoke.bake()
         else:
-            show_message_box("No stopped simulation to continue.", "Info", "INFO")
+            show_message_box("No stopped or baked simulation to continue.", "Info", "INFO")
         
         return {"FINISHED"}
 
